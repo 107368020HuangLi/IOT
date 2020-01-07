@@ -1,0 +1,85 @@
+#include <SoftwareSerial.h>
+
+// connect 2 to TX of Serial USB
+// connect 3 to RX of serial USB
+SoftwareSerial ser(2,3); // RX, TX
+
+#include <Wire.h> //I2C Arduino Library
+#define addr 0x1E //I2C Address for The HMC5883
+
+// this runs once
+void setup() {                
+
+  Serial.begin(9600); 
+  ser.begin(115200);
+
+  Wire.begin();
+  Wire.beginTransmission(addr); //start talking
+  Wire.write(0x02); // Set the Register
+  Wire.write(0x00); // Tell the HMC5883 to Continuously Measure
+  Wire.endTransmission();
+}
+
+
+// the loop 
+void loop() {
+    esp_8266();
+}
+
+void esp_8266()
+{
+  int x,y,z; 
+  
+  Wire.beginTransmission(addr);
+  Wire.write(0x03); //start with register 3.
+  Wire.endTransmission();
+
+  Wire.requestFrom(addr, 6);
+  if(6<=Wire.available()){
+    x = Wire.read()<<8; //MSB  x 
+    x |= Wire.read(); //LSB  x
+    z = Wire.read()<<8; //MSB  z
+    z |= Wire.read(); //LSB z
+    y = Wire.read()<<8; //MSB y
+    y |= Wire.read(); //LSB y
+  }
+  
+  char buf[32];
+  // TCP connection
+  String cmd = "AT+CIPSTART=\"TCP\",\"";
+  cmd += "140.124.72.10"; // api.thingspeak.com                ///////////
+  cmd += "\",80";
+  ser.println(cmd);
+   
+  if(ser.find("Error")){
+    Serial.println("AT+CIPSTART error");
+    return;
+  }
+  
+  // prepare GET string
+  String getStr = "GET /IOT/IOT_insert.php?";                           //////////
+//  getStr +="id=";
+//  getStr += String(r1);
+  getStr +="first=";
+  getStr += String(y);
+  getStr +="&second=";
+  getStr += String(z);
+  getStr += "\r\n\r\n";
+
+  // send data length
+  cmd = "AT+CIPSEND=";
+  cmd += String(getStr.length());
+  ser.println(cmd);
+
+  if(ser.find(">")){
+    ser.print(getStr);
+    Serial.println(getStr);
+  }
+  else{
+   //  ser.println("AT+CIPCLOSE");
+   Serial.println("AT+CIPCLOSE");
+  }
+    
+  // thingspeak needs 15 sec delay between updates
+  delay(1000);  
+}
